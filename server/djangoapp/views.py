@@ -2,10 +2,11 @@ from django.shortcuts import render
 from django.http import HttpResponseRedirect, HttpResponse
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404, render, redirect
-# from .models import related models
-# from .restapis import related methods
+from .models import CarModel
+from .restapis import get_dealers_from_cf, get_dealer_reviews_from_cf, post_request
 from django.contrib.auth import login, logout, authenticate
 from django.contrib import messages
+from django.views.decorators.csrf import csrf_exempt
 from datetime import datetime
 import logging
 import json
@@ -38,18 +39,19 @@ def login_request(request):
         user = authenticate(username=username, password=password)
         if user is not None:
             login(request, user)
-            return render(request, 'djangoapp/index.html', context)
+            return redirect('djangoapp:index')
         else:
-            return render(request, 'djangoapp/index.html', context)
+            context['message'] = "Invalid username or password."
+            return render(request, 'djangoapp/user_login_bootstrap.html', context)
     else:
-        return render(request, 'djangoapp/index.html', context)
+        return render(request, 'djangoapp/user_login_bootstrap.html', context)
 
 # Create a `logout_request` view to handle sign out request
 def logout_request(request):
     context = {}
     print("Log out the user `{}`".format(request.user.username))
     logout(request)
-    return render(request, 'djangoapp/index.html', context)
+    return redirect('djangoapp:index')
 
 # Create a `registration_request` view to handle sign up request
 def registration_request(request):
@@ -81,23 +83,80 @@ def registration_request(request):
                                             password=password)
             # Login the user and redirect to course list page
             login(request, user)
-            return render(request, 'djangoapp/index.html', context)
+            return redirect('djangoapp:index')
         else:
-            return render(request, 'djangoapp/index.html', context)
+            return redirect('djangoapp:index')
 
 
 # Update the `get_dealerships` view to render the index page with a list of dealerships
 def get_dealerships(request):
     context = {}
+    dealership_list = []
     if request.method == "GET":
+        url = "https://30b6e6bc.eu-gb.apigw.appdomain.cloud/api/dealership"
+        # Get dealers from the URL
+        dealerships = get_dealers_from_cf(url)
+        # Concat all dealer's short name
+        #dealer_names = ' '.join([dealer.short_name for dealer in dealerships])
+        context["dealership_list"] = dealerships
+        # Return a list of dealer short name
+        # return HttpResponse(dealer_names)
         return render(request, 'djangoapp/index.html', context)
 
 
 # Create a `get_dealer_details` view to render the reviews of a dealer
-# def get_dealer_details(request, dealer_id):
-# ...
+def get_dealer_details(request, dealer_id):
+    context = {}
+    if request.method == "GET":
+        url = "https://30b6e6bc.eu-gb.apigw.appdomain.cloud/api/review"
+        # Get dealers from the URL
+        dealer_details = get_dealer_reviews_from_cf(url, dealer_id=dealer_id)
+        # Concat all dealer's short name
+        #dealer_details_reviews = ' '.join([dealer_detail.sentiment for dealer_detail in dealer_details])
+        context["review_list"] = dealer_details
+        context["dealer_id"] = dealer_id
+        # Return a list of dealer short name
+        #return HttpResponse(dealer_details_reviews)
+        return render(request, 'djangoapp/dealer_details.html', context)
 
 # Create a `add_review` view to submit a review
-# def add_review(request, dealer_id):
-# ...
+@csrf_exempt
+def add_review(request, dealer_id):
+    context = {}
+    if request.method == 'GET':
+        print("GET add_review")
+        context["dealer_id"] = dealer_id
+        context["cars"] = CarModel.objects.all()
+        print(CarModel.objects.all())
+        return render(request, 'djangoapp/add_review.html', context)
+    elif request.method == 'POST':
+        print("POST add_review")
+        form = request.POST
+        user = User.objects.get(username=request.user)
+        # prepare json_payload to post
+        review = dict()
+        review['id'] = user.pk
+        review['name'] = user.first_name + " " + user.last_name
+        review['dealership'] = dealer_id
+        review['review'] = form["content"]
+        review['purchase'] = bool(form.get("purchasecheck"))
+        review['id'] = 99
+        #review['review'] = request.POST['review']
+        
+        if form.get("purchasecheck"):
+            review["purchase_date"] = datetime.strptime(form.get("purchase_date"), "%m/%d/%Y").isoformat()
+            car = models.CarModel.objects.get(pk=form["car"])
+            review["car_make"] = car.carmaker.name
+            review["car_model"] = car.name
+            review["car_year"] = car.year.strftime("%Y")
+        
+        review_json = dict()
+        review_json['review']= review
+        print(review_json)
 
+        url="https://30b6e6bc.eu-gb.apigw.appdomain.cloud/api/review"
+
+        json_result = post_request(url, review_json, dealer_id=dealer_id)
+        print("---json_result---")
+        print(json_result)
+        return redirect("djangoapp:dealer_details", dealer_id=dealer_id)
