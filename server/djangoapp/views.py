@@ -145,10 +145,33 @@ def add_review(request, dealer_id):
         
         if form.get("purchasecheck"):
             review["purchase_date"] = datetime.strptime(form.get("purchase_date"), "%m/%d/%Y").isoformat()
-            car = models.CarModel.objects.get(pk=form["car"])
-            review["car_make"] = car.carmaker.name
-            review["car_model"] = car.name
-            review["car_year"] = car.year.strftime("%Y")
+            # payload if uer purchased a car
+            review['purchase'] = True
+            if review['purchase_date'] == "":
+                # check a date has been selected
+                print('Review not posted: please insert purchase date')
+                messages.add_message(request, messages.WARNING, \
+                    'Review not posted: please insert purchase date')
+                return redirect("djangoapp:dealer_details", dealer_id=dealer_id)
+            try:
+                # dealer must sell cars in order to leave a review for a purchase
+                #car_id = request.POST['carInformation']
+                #print('car_id:{}'.format(car_id))
+                
+                purchased_car = CarModel.objects.get(pk=form["car"])
+                #purchased_car = CarModel.objects.get(pk=car_id)             
+                review['car_make'] = purchased_car.maker.name
+                review['car_model'] = purchased_car.name
+                review['car_year'] = purchased_car.year.strftime("%Y")
+            except:
+                print('Review not posted: dealer sells no car')
+                messages.add_message(request, messages.WARNING, \
+                    'Review not posted: dealer sells no car, cannot post \
+                    reviews for purchases')
+                return redirect("djangoapp:dealer_details", dealer_id=dealer_id)
+        else:
+            # payload if user did not purchase a car
+            review['purchase'] = False
         
         review_json = dict()
         review_json['review']= review
