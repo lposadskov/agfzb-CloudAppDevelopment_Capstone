@@ -1,5 +1,5 @@
 from django.shortcuts import render
-from django.http import HttpResponseRedirect, HttpResponse
+from django.http import HttpResponseRedirect, HttpResponse, HttpResponseForbidden
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404, render, redirect
 from .models import CarModel
@@ -130,6 +130,9 @@ def add_review(request, dealer_id):
         print(CarModel.objects.all())
         return render(request, 'djangoapp/add_review.html', context)
     elif request.method == 'POST':
+        sessionid = request.COOKIES.get('sessionid')
+        if sessionid is None:
+            return HttpResponseForbidden("Not Authorized: please login to post reviews")
         print("POST add_review")
         form = request.POST
         user = User.objects.get(username=request.user)
